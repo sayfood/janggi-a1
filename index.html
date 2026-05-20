@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>장기 게임 - 어린이 보호 모드 (우회 차단 버전)</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+            font-family: 'Malgun Gothic', sans-serif;
+        }
+        
+        #menu-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 10px;
+            background: white;
+            padding: 12px 25px;
+            border-radius: 10px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+        .menu-row { display: flex; gap: 15px; align-items: center; }
+        .mode-label { font-weight: bold; cursor: pointer; }
+        .disabled-label { color: #aaa; cursor: not-allowed; }
+
+        #turn-container {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 15px;
+            height: 40px; 
+        }
+
+        #turn-indicator {
+            font-size: 18px;
+            font-weight: bold;
+            padding: 6px 20px;
+            border-radius: 20px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+        .turn-cho { background-color: #e6fff0; color: #00aa50; border: 2px solid #00aa50; }
+        .turn-han { background-color: #ffe6e6; color: #ff3333; border: 2px solid #ff3333; }
+
+        /* ⌛ 대국 횟수 디자인 */
+        #game-counter {
+            font-size: 16px;
+            font-weight: bold;
+            color: #4a3b32;
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 6px 15px;
+            border-radius: 20px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+
+        #jang-yee-o {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ff3333;
+            background-color: #fff0f0;
+            border: 2px dashed #ff3333;
+            padding: 6px 15px;
+            border-radius: 20px;
+            display: none;
+            animation: blink 0.8s infinite alternate;
+        }
+        @keyframes blink {
+            from { opacity: 0.4; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1.02); }
+        }
+
+        #board-container {
+            position: relative;
+            width: 520px; 
+            height: 585px;
+            background-color: #e6c29e;
+            padding: 30px; 
+            border: 4px solid #5c3a21;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        #grid-layer {
+            position: absolute;
+            top: 30px; left: 30px;
+            width: 520px; height: 585px;
+            pointer-events: none;
+        }
+        .grid-row { position: absolute; left: 0; width: 100%; height: 1px; background-color: #b08d6a; }
+        .grid-col { position: absolute; top: 0; height: 100%; width: 1px; background-color: #b08d6a; }
+
+        #palace-svg { position: absolute; top: 30px; left: 30px; width: 520px; height: 585px; pointer-events: none; }
+        .palace-line { stroke: #b08d6a; stroke-width: 1.5; }
+
+        #interactive-layer { position: absolute; top: 30px; left: 30px; width: 520px; height: 585px; }
+
+        .intersection {
+            position: absolute; width: 60px; height: 60px; transform: translate(-50%, -50%);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; z-index: 10; border-radius: 50%;
+        }
+        .intersection.suggested::after {
+            content: ''; position: absolute; width: 16px; height: 16px;
+            background-color: rgba(90, 90, 90, 0.6); border-radius: 50%;
+            pointer-events: none; z-index: 12;
+        }
+
+        #guide-svg { position: absolute; top: 30px; left: 30px; width: 520px; height: 585px; pointer-events: none; z-index: 9; }
+
+        .piece {
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-weight: bold; user-select: none; box-shadow: 2px 3px 6px rgba(0,0,0,0.35);
+            transition: transform 0.1s ease; z-index: 11; background-color: #e6c29e;
+        }
+        .size-large { width: 56px; height: 56px; font-size: 24px; }
+        .size-medium { width: 48px; height: 48px; font-size: 20px; }
+        .size-small { width: 40px; height: 40px; font-size: 16px; }
+
+        .cho { background-color: #f3fff7; border: 2px solid #00aa50; color: #00aa50; }
+        .han { background-color: #fff3f3; border: 2px solid #ff3333; color: #ff3333; }
+        .selected { outline: 3px solid #0000ff; transform: scale(1.1); z-index: 15; }
+
+        #control-panel { margin-top: 20px; display: flex; gap: 15px; }
+        .btn {
+            padding: 10px 25px; font-size: 16px; font-weight: bold;
+            border: none; border-radius: 5px; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15); transition: all 0.2s;
+        }
+        #undo-btn { background-color: #d2a679; color: #4a2f1b; border: 2px solid #5c3a21; }
+        #undo-btn:disabled { background-color: #ccc; color: #888; border-color: #aaa; cursor: not-allowed; box-shadow: none; }
+
+        /* 모달 디자인 */
+        .modal {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.5); z-index: 100;
+            justify-content: center; align-items: center; flex-direction: column;
+        }
+        .modal-content { background-color: white; padding: 30px 50px; border-radius: 15px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.5); max-width: 400px; }
+        .modal-content h2 { margin-top: 0; color: #333; }
+        .modal-content button {
+            margin: 15px 5px 0 5px; padding: 10px 25px; font-size: 16px; font-weight: bold;
+            background-color: #5c3a21; color: white; border: none; border-radius: 5px; cursor: pointer;
+        }
+        .modal-content button:disabled {
+            background-color: #aaa; cursor: not-allowed;
+        }
+
+        /* 🔐 영어 퀴즈 전용 모달 */
+        #quiz-modal { background-color: rgba(0, 0, 0, 0.8); }
+        #quiz-question { font-size: 26px; font-weight: bold; color: #00aa50; letter-spacing: 4px; margin: 20px 0; }
+        #quiz-input { font-size: 24px; width: 80px; text-align: center; text-transform: uppercase; padding: 5px; border: 3px solid #5c3a21; border-radius: 5px; margin-bottom: 10px; }
+        #quiz-hint { color: #666; font-size: 14px; margin-bottom: 15px; }
+        #quiz-error { font-weight: bold; font-size: 16px; height: 22px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="menu-panel">
+    <div class="menu-row">
+        <span><b>대국 모드:</b></span>
+        <label class="mode-label"><input type="radio" name="gameMode" value="2p" checked onchange="onChangeMode()"> 2인 대국</label>
+        <label class="mode-label"><input type="radio" name="gameMode" value="ai" onchange="onChangeMode()"> AI 대국 (한나라 AI)</label>
+    </div>
+    <div class="menu-row">
+        <span><b>AI 난이도:</b></span>
+        <label id="lbl-easy" class="mode-label disabled-label"><input type="radio" name="aiLevel" value="easy" disabled checked onchange="onChangeLevel()"> 하 (쉬움)</label>
+        <label id="lbl-normal" class="mode-label disabled-label"><input type="radio" name="aiLevel" value="normal" disabled onchange="onChangeLevel()"> 중 (보통)</label>
+        <label id="lbl-hard" class="mode-label disabled-label"><input type="radio" name="aiLevel" value="hard" disabled onchange="onChangeLevel()"> 상 (어려움)</label>
+    </div>
+</div>
+
+<div id="turn-container">
+    <div id="turn-indicator" class="turn-cho">현재 차례: 초나라 (녹색)</div>
+    <div id="game-counter">⌛ 대국 횟수: 0 / 5 판</div>
+    <div id="jang-yee-o">📢 [장이요!] 왕이 위험합니다!</div>
+</div>
+
+<div id="board-container">
+    <div id="grid-layer"></div>
+    <svg id="palace-svg">
+        <line x1="195" y1="0" x2="325" y2="130" class="palace-line" />
+        <line x1="325" y1="0" x2="195" y2="130" class="palace-line" />
+        <line x1="195" y1="455" x2="325" y2="585" class="palace-line" />
+        <line x1="325" y1="455" x2="195" y2="585" class="palace-line" />
+    </svg>
+    <svg id="guide-svg"></svg>
+    <div id="interactive-layer"></div>
+    
+    <!-- 일반 승리 모달 -->
+    <div id="victory-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="victory-text">초나라 승리!</h2>
+            <button onclick="onVictoryConfirm()">다음 대국 하기</button>
+        </div>
+    </div>
+
+    <!-- 🔐 영어 퀴즈 잠금 모달 -->
+    <div id="quiz-modal" class="modal">
+        <div class="modal-content">
+            <h2>🔒 장기판이 잠겼어요!</h2>
+            <p>오늘의 5판을 모두 마쳤습니다.<br>영어 퀴즈를 맞히면 5판이 충전돼요!</p>
+            <hr style="border: 1px solid #eee; margin: 15px 0;">
+            <div id="quiz-hint-text" style="font-weight: bold; color: #333;">[문제] 고양이</div>
+            <div id="quiz-question">C _ T</div>
+            <input type="text" id="quiz-input" maxlength="1" placeholder="?" autocomplete="off">
+            <div id="quiz-hint">빈칸에 들어갈 글자를 알파벳 1개만 입력하세요.</div>
+            <div id="quiz-error"></div>
+            <button id="quiz-submit-btn" onclick="checkQuizAnswer()">정답 확인</button>
+        </div>
+    </div>
+</div>
+
+<div id="control-panel">
+    <button id="undo-btn" class="btn" onclick="undoMove()">무르기 (초 3 | 한 3)</button>
+</div>
+
+<script>
+    const gridLayer = document.getElementById('grid-layer');
+    const interactiveLayer = document.getElementById('interactive-layer');
+    const svgElement = document.getElementById('guide-svg');
+    const modalElement = document.getElementById('victory-modal');
+    const victoryTextElement = document.getElementById('victory-text');
+    const turnIndicator = document.getElementById('turn-indicator');
+    const jangYeeOLabel = document.getElementById('jang-yee-o');
+    const undoBtn = document.getElementById('undo-btn');
+    
+    const gameCounterLabel = document.getElementById('game-counter');
+    const quizModal = document.getElementById('quiz-modal');
+    const quizHintText = document.getElementById('quiz-hint-text');
+    const quizQuestion = document.getElementById('quiz-question');
+    const quizInput = document.getElementById('quiz-input');
+    const quizError = document.getElementById('quiz-error');
+    const quizSubmitBtn = document.getElementById('quiz-submit-btn');
+
+    const STEP_X = 65; const STEP_Y = 65;
+
+    let selectedPiece = null; let possibleMoves = []; let isGameOver = false; let isAiThinking = false; 
+    let currentTurn = 'cho'; let gameMode = '2p'; let aiLevel = 'easy'; 
+    let undoCounts = { cho: 3, han: 3 }; let moveHistory = [];                
+
+    let currentGameCount = 0; 
+    // 💡 최대 판수를 5판으로 변경했습니다.
+    const MAX_GAMES = 5; 
+    let isQuizLocked = false;
+    let isFirstMoveOfThisGame = true; 
+
+    const QUIZ_BANK = [
+        { hint: "🐱 고양이", question: "C _ T", answer: "A" },
+        { hint: "🐶 강아지", question: "D _ G", answer: "O" },
+        { hint: "☀️ 태양", question: "S _ N", answer: "U" },
+        { hint: "🚌 버스", question: "B _ S", answer: "U" },
+        { hint: "🍎 사과", question: "A P P L _", answer: "E" }
+    ];
+    let currentQuiz = null;
+
+    let currentBoard = [];
+    const initialBoard = [
+        ['한車', '한馬', '한象', '한士', '', '한士', '한象', '한馬', '한車'],
+        ['', '', '', '', '한宮', '', '', '', ''],
+        ['', '한包', '', '', '', '', '', '한包', ''],
+        ['한兵', '', '한兵', '', '한兵', '', '한兵', '', '한兵'],
+        ['', '', '', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', '', '', ''],
+        ['초卒', '', '초卒', '', '초卒', '', '초卒', '', '초卒'],
+        ['', '초包', '', '', '', '', '', '초包', ''],
+        ['', '', '', '', '초宮', '', '', '', ''],
+        ['초車', '초馬', '초象', '초士', '', '초士', '초象', '초馬', '초車']
+    ];
+
+    const PIECE_VALUES = { '宮': 10000, '車': 13, '包': 7, '馬': 5, '象': 3, '士': 2, '卒': 2, '兵': 2 };
+
+    function drawGridLines() {
+        gridLayer.innerHTML = '';
+        for (let i = 0; i < 10; i++) {
+            const rowLine = document.createElement('div'); rowLine.classList.add('grid-row'); rowLine.style.top = `${i * STEP_Y}px`; gridLayer.appendChild(rowLine);
+        }
+        for (let i = 0; i < 9; i++) {
+            const colLine = document.createElement('div'); colLine.classList.add('grid-col'); colLine.style.left = `${i * STEP_X}px`; gridLayer.appendChild(colLine);
+        }
+    }
+
+    function renderIntersections() {
+        interactiveLayer.innerHTML = '';
+        for (let row = 0; row < 10; row++) {
+            for (let col = 0; col < 9; col++) {
+                const intersect = document.createElement('div');
+                intersect.classList.add('intersection');
+                intersect.style.top = `${row * STEP_Y}px`; intersect.style.left = `${col * STEP_X}px`;
+                intersect.dataset.row = row; intersect.dataset.col = col;
+
+                const pieceText = currentBoard[row][col];
+                if (pieceText) {
+                    const piece = document.createElement('div');
+                    piece.classList.add('piece');
+                    const pName = pieceText.substring(1);
+                    piece.innerText = pName;
+                    if (pieceText.startsWith('초')) piece.classList.add('cho'); else piece.classList.add('han');
+
+                    if (pName === '宮') piece.classList.add('size-large');
+                    else if (pName === '卒' || pName === '兵' || pName === '士') piece.classList.add('size-small');
+                    else piece.classList.add('size-medium');
+
+                    intersect.appendChild(piece);
+                }
+                intersect.addEventListener('click', onIntersectionClick);
+                interactiveLayer.appendChild(intersect);
+            }
+        }
+        updateTurnUI();
+        checkAndDisplayCheckStatus();
+    }
+
+    function updateTurnUI() {
+        // 상단 바의 판수 안내 텍스트 자동 반영 (X / 5 판)
+        gameCounterLabel.innerText = `⌛ 대국 횟수: ${currentGameCount} / ${MAX_GAMES} 판`;
+
+        if (currentTurn === 'cho') {
+            turnIndicator.innerText = "현재 차례: 초나라 (녹색)"; turnIndicator.className = "turn-cho";
+        } else {
+            turnIndicator.innerText = isAiThinking ? "한나라 AI가 수 읽는 중..." : "현재 차례: 한나라 (적색)";
+            turnIndicator.className = "turn-han";
+        }
+
+        if (gameMode === '2p') {
+            undoBtn.innerText = `무르기 (남은 횟수 - 초: ${undoCounts.cho} | 한: ${undoCounts.han})`;
+            const currentUndoLeft = undoCounts[currentTurn];
+            undoBtn.disabled = (moveHistory.length === 0 || currentUndoLeft <= 0 || isGameOver || isQuizLocked);
+        } else {
+            undoBtn.innerText = `무르기 (AI 모드 사용 불가)`;
+            undoBtn.disabled = true;
+        }
+    }
+
+    function checkAndDisplayCheckStatus() {
+        if (isQuizLocked) return;
+        const attackingThreats = getKingAttackers(currentBoard, currentTurn);
+        if (attackingThreats.length > 0) jangYeeOLabel.style.display = 'block'; else jangYeeOLabel.style.display = 'none';
+    }
+
+    function onIntersectionClick(e) {
+        if (isGameOver || isAiThinking || isQuizLocked) return;
+
+        const intersect = e.currentTarget;
+        const row = parseInt(intersect.dataset.row);
+        const col = parseInt(intersect.dataset.col);
+        const piece = intersect.querySelector('.piece');
+
+        if (selectedPiece && isMovePossible(row, col)) {
+            executeMove(row, col);
+            return;
+        }
+
+        if (piece) {
+            const isPieceCho = piece.classList.contains('cho');
+            if ((currentTurn === 'cho' && !isPieceCho) || (currentTurn === 'han' && isPieceCho)) return;
+        }
+
+        if (piece && selectedPiece && isSameTeam(selectedPiece, piece)) {
+            clearHighlights(); selectedPiece = piece; piece.classList.add('selected'); highlightPossibleMoves(row, col, piece); return;
+        }
+
+        if (piece) {
+            clearHighlights(); selectedPiece = piece; piece.classList.add('selected'); highlightPossibleMoves(row, col, piece);
+        } else {
+            clearHighlights(); selectedPiece = null;
+        }
+    }
+
+    function executeMove(toRow, toCol) {
+        if (isFirstMoveOfThisGame) {
+            currentGameCount++;
+            isFirstMoveOfThisGame = false;
+            
+            if (currentGameCount > MAX_GAMES) {
+                openQuizModal();
+                return;
+            }
+            updateTurnUI();
+        }
+
+        const fromRow = parseInt(selectedPiece.parentElement.dataset.row);
+        const fromCol = parseInt(selectedPiece.parentElement.dataset.col);
+        const deadPiece = currentBoard[toRow][toCol];
+
+        if (gameMode === '2p') {
+            moveHistory.push({ board: JSON.parse(JSON.stringify(currentBoard)), turn: currentTurn });
+        }
+
+        currentBoard[toRow][toCol] = currentBoard[fromRow][fromCol];
+        currentBoard[fromRow][fromCol] = '';
+
+        clearHighlights();
+        selectedPiece = null;
+
+        if (deadPiece && deadPiece.substring(1) === '宮') {
+            renderIntersections();
+            endGame(deadPiece.startsWith('초') ? '한나라' : '초나라');
+            return;
+        }
+        
+        currentTurn = (currentTurn === 'cho') ? 'han' : 'cho';
+        renderIntersections();
+
+        if (gameMode === 'ai' && currentTurn === 'han' && !isGameOver) {
+            triggerAiMove();
+        }
+    }
+
+    function undoMove() {
+        if (gameMode !== '2p' || isGameOver || moveHistory.length === 0 || isQuizLocked) return;
+        const sideRestoring = currentTurn; if (undoCounts[sideRestoring] <= 0) return;
+
+        const lastState = moveHistory.pop();
+        currentBoard = lastState.board;
+        currentTurn = lastState.turn;
+        undoCounts[sideRestoring]--; 
+
+        clearHighlights(); selectedPiece = null; renderIntersections(); 
+    }
+
+    function getKingAttackers(boardState, kingColor) {
+        let kingRow = -1, kingCol = -1;
+        for (let r = 0; r < 10; r++) {
+            for (let c = 0; c < 9; c++) {
+                if (boardState[r][c] === (kingColor === 'cho' ? '초宮' : '한宮')) { kingRow = r; kingCol = c; break; }
+            }
+        }
+        if (kingRow === -1) return [];
+        const attackers = [];
+
+        for (let r = 0; r < 10; r++) {
+            for (let c = 0; c < 9; c++) {
+                const piece = boardState[r][c];
+                if (piece && ((kingColor === 'cho' && piece.startsWith('한')) || (kingColor === 'han' && piece.startsWith('초')))) {
+                    const virtualPiece = document.createElement('div');
+                    virtualPiece.innerText = piece.substring(1);
+                    if (piece.startsWith('초')) virtualPiece.classList.add('cho'); else virtualPiece.classList.add('han');
+
+                    const moves = getDetailedMovesRaw(r, c, virtualPiece, boardState);
+                    const checkMove = moves.find(m => m.target[0] === kingRow && m.target[1] === kingCol);
+                    if (checkMove) {
+                        attackers.push({ attackerName: piece, from: [r, c], paths: checkMove.paths, target: [kingRow, kingCol] });
+                    }
+                }
+            }
+        }
+        return attackers;
+    }
+
+    function isKingUnderAttack(boardState, kingColor) { return getKingAttackers(boardState, kingColor).length > 0; }
+
+    function isVikjang(boardState) {
+        let choKing = null, hanKing = null;
+        for (let r = 0; r < 10; r++) {
+            for (let c = 0; c < 9; c++) {
+                if (boardState[r][c] === '초宮') choKing = {r, c};
+                if (boardState[r][c] === '한宮') hanKing = {r, c};
+            }
+        }
+        if (!choKing || !hanKing) return false;
+        if (choKing.c === hanKing.c) {
+            const col = choKing.c; const startRow = Math.min(choKing.r, hanKing.r) + 1; const endRow = Math.max(choKing.r, hanKing.r);
+            let obstacleCount = 0;
+            for (let r = startRow; r < endRow; r++) { if (boardState[r][col] !== '') obstacleCount++; }
+            if (obstacleCount === 0) return true; 
+        }
+        return false;
+    }
+
+    function triggerAiMove() {
+        isAiThinking = true; updateTurnUI();
+        setTimeout(() => {
+            const allAiMoves = [];
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const pieceText = currentBoard[r][c];
+                    if (pieceText && pieceText.startsWith('한')) {
+                        const virtualPiece = document.createElement('div');
+                        virtualPiece.innerText = pieceText.substring(1); virtualPiece.classList.add('han');
+                        const validMoves = getDetailedMovesRaw(r, c, virtualPiece, currentBoard);
+                        validMoves.forEach(m => {
+                            const targetPiece = currentBoard[m.target[0]][m.target[1]];
+                            let score = targetPiece ? (PIECE_VALUES[targetPiece.substring(1)] || 2) : 0;
+                            const nextBoardSim = JSON.parse(JSON.stringify(currentBoard));
+                            nextBoardSim[m.target[0]][m.target[1]] = nextBoardSim[r][c]; nextBoardSim[r][c] = '';
+                            if (isVikjang(nextBoardSim)) score = -5000;
+                            else if (aiLevel === 'hard' && isKingUnderAttack(nextBoardSim, 'han')) score = -10000;
+                            allAiMoves.push({ from: [r, c], to: m.target, score: score });
+                        });
+                    }
+                }
+            }
+            if (allAiMoves.length > 0) {
+                let chosenMove = null;
+                if (aiLevel === 'easy') {
+                    const safeMoves = allAiMoves.filter(m => m.score >= 0);
+                    const pool = safeMoves.length > 0 ? safeMoves : allAiMoves;
+                    chosenMove = pool[Math.floor(Math.random() * pool.length)];
+                } else if (aiLevel === 'normal') {
+                    if (Math.random() < 0.5) { allAiMoves.sort((a, b) => b.score - a.score); chosenMove = allAiMoves[0]; } 
+                    else { const safeMoves = allAiMoves.filter(m => m.score >= 0); const pool = safeMoves.length > 0 ? safeMoves : allAiMoves; chosenMove = pool[Math.floor(Math.random() * pool.length)]; }
+                } else if (aiLevel === 'hard') {
+                    allAiMoves.sort((a, b) => b.score - a.score); chosenMove = allAiMoves[0];
+                }
+                if (chosenMove) {
+                    const aiIntersect = document.querySelector(`[data-row='${chosenMove.from[0]}'][data-col='${chosenMove.from[1]}']`);
+                    selectedPiece = aiIntersect.querySelector('.piece'); executeMove(chosenMove.to[0], chosenMove.to[1]);
+                }
+            }
+            isAiThinking = false; renderIntersections();
+        }, 500); 
+    }
+
+    function getDetailedMoves(row, col, piece) { return getDetailedMovesRaw(row, col, piece, currentBoard); }
+
+    function getDetailedMovesRaw(row, col, piece, boardState) {
+        const detailedMoves = []; const isCho = piece.classList.contains('cho'); const pName = piece.innerText;
+        const isEnemyOrEmpty = (r, c) => {
+            if (r < 0 || r >= 10 || c < 0 || c >= 9) return false;
+            const target = boardState[r][c]; if (!target) return true; return isCho !== target.startsWith('초');
+        };
+
+        if (pName === '車') {
+            const directions = [[-1,0], [1,0], [0,-1], [0,1]];
+            for (let [dr, dc] of directions) {
+                let nr = row + dr, nc = col + dc;
+                while (nr >= 0 && nr < 10 && nc >= 0 && nc < 9) {
+                    if (!boardState[nr][nc]) { detailedMoves.push({ target: [nr, nc], paths: [[nr, nc]] }); } 
+                    else { if (isEnemyOrEmpty(nr, nc)) { detailedMoves.push({ target: [nr, nc], paths: [[nr, nc]] }); } break; }
+                    nr += dr; nc += dc;
+                }
+            }
+        }
+        else if (pName === '宮' || pName === '士') {
+            const inPalace = (r, c) => (c >= 3 && c <= 5) && (isCho ? (r >= 7 && r <= 9) : (r >= 0 && r <= 2));
+            const directions = [[-1,0], [1,0], [0,-1], [0,1], [-1,-1], [-1,1], [1,-1], [1,1]];
+            for (let [dr, dc] of directions) { let nr = row + dr, nc = col + dc; if (inPalace(nr, nc) && isEnemyOrEmpty(nr, nc)) { detailedMoves.push({ target: [nr, nc], paths: [[nr, nc]] }); } }
+        }
+        else if (pName === '卒' || pName === '兵') {
+            const forwardRow = isCho ? -1 : 1; const directions = [[forwardRow, 0], [0, -1], [0, 1]];
+            for (let [dr, dc] of directions) { let nr = row + dr, nc = col + dc; if (isEnemyOrEmpty(nr, nc)) { detailedMoves.push({ target: [nr, nc], paths: [[nr, nc]] }); } }
+        }
+        else if (pName === '包') {
+            const directions = [[-1,0], [1,0], [0,-1], [0,1]];
+            for (let [dr, dc] of directions) {
+                let nr = row + dr, nc = col + dc; let bridgeFound = false;
+                while (nr >= 0 && nr < 10 && nc >= 0 && nc < 9) {
+                    const current = boardState[nr][nc];
+                    if (!bridgeFound) { if (current) { if (current.substring(1) === '包') break; bridgeFound = true; } } 
+                    else {
+                        if (!current) { detailedMoves.push({ target: [nr, nc], paths: [[nr, nc]] }); } 
+                        else { current.substring(1) !== '包' && isCho !== current.startsWith('초') ? detailedMoves.push({ target: [nr, nc], paths: [[nr, nc]] }) : null; break; }
+                    }
+                    nr += dr; nc += dc;
+                }
+            }
+        }
+        else if (pName === '馬') {
+            const ruts = [
+                { head: [-1, 0], targets: [[-2, -1], [-2, 1]] }, { head: [1, 0],  targets: [[2, -1], [2, 1]] },
+                { head: [0, -1], targets: [[-1, -2], [1, -2]] }, { head: [0, 1],  targets: [[-1, 2], [1, 2]] }
+            ];
+            for (let rut of ruts) {
+                let hr = row + rut.head[0], hc = col + rut.head[1];
+                if (hr >= 0 && hr < 10 && hc >= 0 && hc < 9 && !boardState[hr][hc]) {
+                    for (let [tr, tc] of rut.targets) {
+                        let finalRow = row + tr; let finalCol = col + tc;
+                        if (isEnemyOrEmpty(finalRow, finalCol)) { detailedMoves.push({ target: [finalRow, finalCol], paths: [[hr, hc], [finalRow, finalCol]] }); }
+                    }
+                }
+            }
+        }
+        else if (pName === '象') {
+            const ruts = [
+                { path: [[-1, 0], [-2, -1]], target: [-3, -2] }, { path: [[-1, 0], [-2, 1]],  target: [-3, 2] },
+                { path: [[1, 0], [2, -1]],   target: [3, -2] }, { path: [[1, 0], [2, 1]],    target: [3, 2] },
+                { path: [[0, -1], [-1, -2]], target: [-2, -3] }, { path: [[0, -1], [1, -2]],  target: [2, -3] },
+                { path: [[0, 1], [-1, 2]],   target: [-2, 3] }, { path: [[0, 1], [1, 2]],    target: [2, 3] }
+            ];
+            for (let rut of ruts) {
+                let blocked = false; const pathCoords = [];
+                for (let [pr, pc] of rut.path) {
+                    let rCoord = row + pr, cCoord = col + pc;
+                    if (rCoord < 0 || rCoord >= 10 || cCoord < 0 || cCoord >= 9 || boardState[rCoord][cCoord]) { blocked = true; break; }
+                    pathCoords.push([rCoord, cCoord]);
+                }
+                if (!blocked) {
+                    let tr = row + rut.target[0], tc = col + rut.target[1];
+                    if (isEnemyOrEmpty(tr, tc)) { pathCoords.push([tr, tc]); detailedMoves.push({ target: [tr, tc], paths: pathCoords }); }
+                }
+            }
+        }
+
+        return detailedMoves.filter(m => {
+            const testBoard = JSON.parse(JSON.stringify(boardState));
+            testBoard[m.target[0]][m.target[1]] = testBoard[row][col]; testBoard[row][col] = ''; return !isVikjang(testBoard);
+        });
+    }
+
+    function getIntersectionCenter(row, col) { return { x: col * STEP_X, y: row * STEP_Y }; }
+
+    function highlightPossibleMoves(row, col, piece) {
+        if (isQuizLocked) return;
+        const detailedMoves = getDetailedMoves(row, col, piece);
+        possibleMoves = detailedMoves.map(m => m.target);
+        const startCenter = getIntersectionCenter(row, col);
+
+        detailedMoves.forEach(move => {
+            const [tr, tc] = move.target;
+            const intersect = document.querySelector(`[data-row='${tr}'][data-col='${tc}']`);
+            if (intersect) intersect.classList.add('suggested');
+
+            let pointsStr = `${startCenter.x},${startCenter.y}`;
+            move.paths.forEach(([pr, pc]) => { const pt = getIntersectionCenter(pr, pc); pointsStr += ` ${pt.x},${pt.y}`; });
+
+            const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+            polyline.setAttribute("points", pointsStr); polyline.setAttribute("stroke", "#a0a0a0");
+            polyline.setAttribute("stroke-width", "2"); polyline.setAttribute("opacity", "0.5");
+            polyline.setAttribute("fill", "none"); polyline.setAttribute("stroke-dasharray", "4,4");
+            svgElement.appendChild(polyline);
+        });
+    }
+
+    function clearHighlights() {
+        if (selectedPiece) selectedPiece.classList.remove('selected');
+        document.querySelectorAll('.intersection.suggested').forEach(el => el.classList.remove('suggested'));
+        if (svgElement) svgElement.innerHTML = ''; possibleMoves = [];
+    }
+
+    function isSameTeam(piece1, piece2) { return piece1.classList.contains('cho') === piece2.classList.contains('cho'); }
+    function isMovePossible(r, c) { return possibleMoves.some(([pr, pc]) => pr === r && pc === c); }
+
+    function onChangeMode() {
+        gameMode = document.querySelector('input[name="gameMode"]:checked').value;
+        const labels = ['lbl-easy', 'lbl-normal', 'lbl-hard'];
+        labels.forEach(id => {
+            const el = document.getElementById(id);
+            if (gameMode === 'ai') { el.classList.remove('disabled-label'); el.querySelector('input').disabled = false; } 
+            else { el.classList.add('disabled-label'); el.querySelector('input').disabled = true; }
+        });
+        
+        resetGame(false); 
+    }
+
+    function onChangeLevel() {
+        aiLevel = document.querySelector('input[name="aiLevel"]:checked').value;
+        resetGame(false);
+    }
+
+    function endGame(winner) {
+        isGameOver = true;
+        victoryTextElement.innerText = `${winner} 승리!`;
+        modalElement.style.display = 'flex';
+        jangYeeOLabel.style.display = 'none';
+        updateTurnUI();
+    }
+
+    function onVictoryConfirm() {
+        modalElement.style.display = 'none';
+        if (currentGameCount >= MAX_GAMES) {
+            openQuizModal();
+        } else {
+            resetGame(true); 
+        }
+    }
+
+    function openQuizModal() {
+        isQuizLocked = true; jangYeeOLabel.style.display = 'none'; clearHighlights();
+        currentQuiz = QUIZ_BANK[Math.floor(Math.random() * QUIZ_BANK.length)];
+        
+        quizHintText.innerText = `[문제] ${currentQuiz.hint}`;
+        quizQuestion.innerText = currentQuiz.question;
+        quizInput.value = ''; 
+        quizError.innerText = '';
+        quizError.style.color = '#ff3333'; 
+        quizSubmitBtn.disabled = false; 
+        quizModal.style.display = 'flex'; quizInput.focus();
+    }
+
+    function checkQuizAnswer() {
+        const userAnswer = quizInput.value.trim().toUpperCase();
+        if (!userAnswer) { 
+            quizError.innerText = "글자를 채워주세요!"; 
+            quizError.style.color = '#ff3333';
+            return; 
+        }
+
+        if (userAnswer === currentQuiz.answer) {
+            quizSubmitBtn.disabled = true; 
+            // 💡 안내 문구도 5판에 맞춰 자연스럽게 노출되도록 반영했습니다.
+            quizError.innerText = "🎉 정답입니다! 잠시 후 대국이 충전됩니다.";
+            quizError.style.color = '#00aa50'; 
+
+            setTimeout(() => {
+                isQuizLocked = false;
+                quizModal.style.display = 'none';
+                currentGameCount = 0; 
+                resetGame(true);
+            }, 1200);
+
+        } else {
+            quizError.innerText = "다시 한번 생각해볼까요? 할 수 있어요!";
+            quizError.style.color = '#ff3333';
+            quizInput.value = ''; quizInput.focus();
+        }
+    }
+
+    quizInput.addEventListener('keyup', function(e) { if (e.key === 'Enter') checkQuizAnswer(); });
+
+    function resetGame(isNewMatch = true) {
+        currentBoard = JSON.parse(JSON.stringify(initialBoard));
+        isGameOver = false; isAiThinking = false; currentTurn = 'cho';
+        undoCounts = { cho: 3, han: 3 }; moveHistory = [];
+        modalElement.style.display = 'none'; 
+        if (!isQuizLocked) quizModal.style.display = 'none';
+        jangYeeOLabel.style.display = 'none';
+        if(svgElement) svgElement.innerHTML = '';
+        
+        if (isNewMatch) {
+            isFirstMoveOfThisGame = true; 
+        }
+        if (!isNewMatch && !isFirstMoveOfThisGame) {
+            isFirstMoveOfThisGame = true; 
+        }
+
+        drawGridLines(); renderIntersections();
+    }
+
+    document.getElementsByName("aiLevel")[0].id = "input-easy";
+    document.getElementsByName("aiLevel")[1].id = "input-normal";
+    document.getElementsByName("aiLevel")[2].id = "input-hard";
+
+    drawGridLines();
+    resetGame(true);
+</script>
+
+</body>
+</html>
