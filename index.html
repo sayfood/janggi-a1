@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>장기 게임 - 어린이 보호 모드 (우회 차단 버전)</title>
+    <title>장기 게임 - 어린이 보호 모드 (무르기 완벽 수정 버전)</title>
     <style>
         body {
             display: flex;
@@ -47,7 +47,6 @@
         .turn-cho { background-color: #e6fff0; color: #00aa50; border: 2px solid #00aa50; }
         .turn-han { background-color: #ffe6e6; color: #ff3333; border: 2px solid #ff3333; }
 
-        /* ⌛ 대국 횟수 디자인 */
         #game-counter {
             font-size: 16px;
             font-weight: bold;
@@ -134,7 +133,6 @@
         #undo-btn { background-color: #d2a679; color: #4a2f1b; border: 2px solid #5c3a21; }
         #undo-btn:disabled { background-color: #ccc; color: #888; border-color: #aaa; cursor: not-allowed; box-shadow: none; }
 
-        /* 모달 디자인 */
         .modal {
             display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background-color: rgba(0, 0, 0, 0.5); z-index: 100;
@@ -150,7 +148,6 @@
             background-color: #aaa; cursor: not-allowed;
         }
 
-        /* 🔐 영어 퀴즈 전용 모달 */
         #quiz-modal { background-color: rgba(0, 0, 0, 0.8); }
         #quiz-question { font-size: 26px; font-weight: bold; color: #00aa50; letter-spacing: 4px; margin: 20px 0; }
         #quiz-input { font-size: 24px; width: 80px; text-align: center; text-transform: uppercase; padding: 5px; border: 3px solid #5c3a21; border-radius: 5px; margin-bottom: 10px; }
@@ -191,7 +188,6 @@
     <svg id="guide-svg"></svg>
     <div id="interactive-layer"></div>
     
-    <!-- 일반 승리 모달 -->
     <div id="victory-modal" class="modal">
         <div class="modal-content">
             <h2 id="victory-text">초나라 승리!</h2>
@@ -199,7 +195,6 @@
         </div>
     </div>
 
-    <!-- 🔐 영어 퀴즈 잠금 모달 -->
     <div id="quiz-modal" class="modal">
         <div class="modal-content">
             <h2>🔒 장기판이 잠겼어요!</h2>
@@ -241,10 +236,11 @@
 
     let selectedPiece = null; let possibleMoves = []; let isGameOver = false; let isAiThinking = false; 
     let currentTurn = 'cho'; let gameMode = '2p'; let aiLevel = 'easy'; 
-    let undoCounts = { cho: 3, han: 3 }; let moveHistory = [];                
+    let undoCounts = { cho: 3, han: 3 }; 
+    let aiUndoCount = 3; 
+    let moveHistory = [];                
 
     let currentGameCount = 0; 
-    // 💡 최대 판수를 5판으로 변경했습니다.
     const MAX_GAMES = 5; 
     let isQuizLocked = false;
     let isFirstMoveOfThisGame = true; 
@@ -316,7 +312,6 @@
     }
 
     function updateTurnUI() {
-        // 상단 바의 판수 안내 텍스트 자동 반영 (X / 5 판)
         gameCounterLabel.innerText = `⌛ 대국 횟수: ${currentGameCount} / ${MAX_GAMES} 판`;
 
         if (currentTurn === 'cho') {
@@ -328,11 +323,18 @@
 
         if (gameMode === '2p') {
             undoBtn.innerText = `무르기 (남은 횟수 - 초: ${undoCounts.cho} | 한: ${undoCounts.han})`;
-            const currentUndoLeft = undoCounts[currentTurn];
-            undoBtn.disabled = (moveHistory.length === 0 || currentUndoLeft <= 0 || isGameOver || isQuizLocked);
+            
+            // 💡 [버그 수정]: 히스토리가 있다면, 직전에 착수한 플레이어의 잔여 횟수를 기준으로 버튼 활성화 여부를 체크합니다.
+            if (moveHistory.length > 0) {
+                const lastMove = moveHistory[moveHistory.length - 1];
+                const lastPlayer = lastMove.turn; // 직전에 말을 움직인 사람
+                undoBtn.disabled = (undoCounts[lastPlayer] <= 0 || isGameOver || isQuizLocked);
+            } else {
+                undoBtn.disabled = true; // 아무도 안 뒀으면 비활성화
+            }
         } else {
-            undoBtn.innerText = `무르기 (AI 모드 사용 불가)`;
-            undoBtn.disabled = true;
+            undoBtn.innerText = `무르기 (남은 횟수: ${aiUndoCount}회)`;
+            undoBtn.disabled = (currentTurn !== 'cho' || moveHistory.length < 2 || aiUndoCount <= 0 || isGameOver || isQuizLocked || isAiThinking);
         }
     }
 
@@ -387,9 +389,7 @@
         const fromCol = parseInt(selectedPiece.parentElement.dataset.col);
         const deadPiece = currentBoard[toRow][toCol];
 
-        if (gameMode === '2p') {
-            moveHistory.push({ board: JSON.parse(JSON.stringify(currentBoard)), turn: currentTurn });
-        }
+        moveHistory.push({ board: JSON.parse(JSON.stringify(currentBoard)), turn: currentTurn });
 
         currentBoard[toRow][toCol] = currentBoard[fromRow][fromCol];
         currentBoard[fromRow][fromCol] = '';
@@ -412,15 +412,38 @@
     }
 
     function undoMove() {
-        if (gameMode !== '2p' || isGameOver || moveHistory.length === 0 || isQuizLocked) return;
-        const sideRestoring = currentTurn; if (undoCounts[sideRestoring] <= 0) return;
+        if (isGameOver || isQuizLocked || moveHistory.length === 0) return;
 
-        const lastState = moveHistory.pop();
-        currentBoard = lastState.board;
-        currentTurn = lastState.turn;
-        undoCounts[sideRestoring]--; 
+        if (gameMode === '2p') {
+            // 💡 [핵심 수정]: 무르기 버튼을 누르는 순간이 아니라, 취소하고 싶은 '직전 배치 상태'를 꺼내와서
+            // 그 배치를 만든 플레이어(lastState.turn)의 카운트를 차감시킵니다.
+            const lastState = moveHistory.pop();
+            const lastPlayer = lastState.turn; // 말을 움직였던 주인공 (예: 'cho')
 
-        clearHighlights(); selectedPiece = null; renderIntersections(); 
+            if (undoCounts[lastPlayer] <= 0) {
+                // 횟수가 없는데 비정상적으로 호출된 경우 스택 복구 후 탈출
+                moveHistory.push(lastState);
+                return;
+            }
+
+            currentBoard = lastState.board;
+            currentTurn = lastState.turn; // 차례도 말을 두기 전의 플레이어 상태로 백업
+            undoCounts[lastPlayer]--; // 실제 행동한 사람의 횟수를 마이너스!
+        } 
+        else {
+            if (currentTurn !== 'cho' || aiUndoCount <= 0 || moveHistory.length < 2) return;
+
+            moveHistory.pop(); 
+            const playerState = moveHistory.pop(); 
+            
+            currentBoard = playerState.board;
+            currentTurn = playerState.turn; 
+            aiUndoCount--; 
+        }
+
+        clearHighlights(); 
+        selectedPiece = null; 
+        renderIntersections(); 
     }
 
     function getKingAttackers(boardState, kingColor) {
@@ -692,7 +715,6 @@
 
         if (userAnswer === currentQuiz.answer) {
             quizSubmitBtn.disabled = true; 
-            // 💡 안내 문구도 5판에 맞춰 자연스럽게 노출되도록 반영했습니다.
             quizError.innerText = "🎉 정답입니다! 잠시 후 대국이 충전됩니다.";
             quizError.style.color = '#00aa50'; 
 
@@ -715,7 +737,9 @@
     function resetGame(isNewMatch = true) {
         currentBoard = JSON.parse(JSON.stringify(initialBoard));
         isGameOver = false; isAiThinking = false; currentTurn = 'cho';
-        undoCounts = { cho: 3, han: 3 }; moveHistory = [];
+        undoCounts = { cho: 3, han: 3 }; 
+        aiUndoCount = 3; 
+        moveHistory = [];
         modalElement.style.display = 'none'; 
         if (!isQuizLocked) quizModal.style.display = 'none';
         jangYeeOLabel.style.display = 'none';
